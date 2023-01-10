@@ -17,10 +17,9 @@ package org.codehaus.mojo.mrm.maven;
  */
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
+import java.nio.file.Files;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -28,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.maven.archetype.ArchetypeManager;
@@ -42,52 +42,35 @@ import org.apache.maven.artifact.repository.metadata.RepositoryMetadataManager;
 import org.apache.maven.artifact.repository.metadata.RepositoryMetadataResolutionException;
 import org.apache.maven.artifact.repository.metadata.SnapshotArtifactRepositoryMetadata;
 import org.apache.maven.artifact.repository.metadata.SnapshotVersion;
-import org.apache.maven.artifact.resolver.ArtifactResolutionException;
-import org.apache.maven.artifact.resolver.ArtifactResolver;
 import org.apache.maven.artifact.versioning.InvalidVersionSpecificationException;
 import org.apache.maven.artifact.versioning.VersionRange;
+import org.apache.maven.execution.MavenSession;
+import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.logging.Log;
+import org.codehaus.mojo.mrm.api.ResolverUtils;
 import org.codehaus.mojo.mrm.api.maven.ArchetypeCatalogNotFoundException;
 import org.codehaus.mojo.mrm.api.maven.Artifact;
 import org.codehaus.mojo.mrm.api.maven.ArtifactNotFoundException;
 import org.codehaus.mojo.mrm.api.maven.BaseArtifactStore;
 import org.codehaus.mojo.mrm.api.maven.MetadataNotFoundException;
+import org.codehaus.mojo.mrm.plugin.FactoryHelper;
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.resolution.ArtifactRequest;
+
+import static java.util.Optional.ofNullable;
 
 /**
  * An {@link org.codehaus.mojo.mrm.api.maven.ArtifactStore} that serves content from a running Maven instance.
  */
 public class ProxyArtifactStore extends BaseArtifactStore {
-    /**
-     * The {@link RepositoryMetadataManager} provided by Maven.
-     */
-    private final RepositoryMetadataManager repositoryMetadataManager;
 
-    /**
-     * The remote plugin repositories provided by Maven.
-     */
-    private final List<ArtifactRepository> remotePluginRepositories;
-
-    /**
-     * The {@link ArtifactRepository} provided by Maven.
-     */
-    private final ArtifactRepository localRepository;
-
-    /**
-     * The {@link ArtifactFactory} provided by Maven.
-     */
-    private final ArtifactFactory artifactFactory;
+    private final List<RemoteRepository> remoteRepositories;
 
     /**
      * The remote repositories that we will query.
      */
-    private final List<ArtifactRepository> remoteRepositories;
-
-    /**
-     * The {@link ArtifactResolver} provided by Maven.
-     */
-    private final ArtifactResolver artifactResolver;
-
-    private final ArchetypeManager archetypeManager;
+    private final List<ArtifactRepository> artifactRepositories;
 
     /**
      * The {@link Log} to log to.
@@ -97,50 +80,57 @@ public class ProxyArtifactStore extends BaseArtifactStore {
     /**
      * A version range that matches any version
      */
-    private final VersionRange anyVersion;
+    private static final VersionRange ANY_VERSION;
 
     /**
      * A cache of what artifacts are present.
      */
     private final Map<String, Map<String, Artifact>> children = new HashMap<>();
 
-    /**
-     * Creates a new instance.
-     *
-     * @param repositoryMetadataManager  the {@link RepositoryMetadataManager} to use.
-     * @param remoteArtifactRepositories the repsoitories to use.
-     * @param remotePluginRepositories   the plugin repositories to use.
-     * @param localRepository            the local repository to use.
-     * @param artifactFactory            the {@link ArtifactFactory} to use.
-     * @param artifactResolver           the {@link ArtifactResolver} to use.
-     * @param log                        the {@link Log} to log to.
-     */
-    @SuppressWarnings("checkstyle:ParameterNumber")
-    public ProxyArtifactStore(
-            RepositoryMetadataManager repositoryMetadataManager,
-            List<ArtifactRepository> remoteArtifactRepositories,
-            List<ArtifactRepository> remotePluginRepositories,
-            ArtifactRepository localRepository,
-            ArtifactFactory artifactFactory,
-            ArtifactResolver artifactResolver,
-            ArchetypeManager archetypeManager,
-            Log log) {
-        this.repositoryMetadataManager = repositoryMetadataManager;
-        this.remotePluginRepositories = remotePluginRepositories;
-        this.localRepository = localRepository;
-        this.artifactFactory = artifactFactory;
-        this.artifactResolver = artifactResolver;
-        this.archetypeManager = archetypeManager;
-        this.log = log;
-        remoteRepositories = new ArrayList<>();
-        remoteRepositories.addAll(remoteArtifactRepositories);
-        remoteRepositories.addAll(remotePluginRepositories);
+    private final RepositorySystem repositorySystem;
+
+    private final MavenSession session;
+
+    static {
         try {
-            anyVersion = VersionRange.createFromVersionSpec("[0,]");
+            ANY_VERSION = VersionRange.createFromVersionSpec("[0,]");
         } catch (InvalidVersionSpecificationException e) {
             // must never happen... so if it does make sure we stop
             throw new IllegalStateException("[0,] should always be a valid version specification", e);
         }
+    }
+
+    private final RepositoryMetadataManager repositoryMetadataManager;
+
+    private final ArtifactFactory artifactFactory;
+
+    private final ArchetypeManager archetypeManager;
+
+    /**
+     * Creates a new instance.
+     *
+     * @param factoryHelper injected {@link FactoryHelper} instance
+     * @param session {@link MavenSession} instance from Maven execution
+     * @param log {@link Log} instance from {@link AbstractMojo}
+     */
+    public ProxyArtifactStore(FactoryHelper factoryHelper, MavenSession session, Log log) {
+        this.repositorySystem = Objects.requireNonNull(factoryHelper.getRepositorySystem());
+        this.repositoryMetadataManager = Objects.requireNonNull(factoryHelper.getRepositoryMetadataManager());
+        this.artifactFactory = Objects.requireNonNull(factoryHelper.getArtifactFactory());
+        this.archetypeManager = Objects.requireNonNull(factoryHelper.getArchetypeManager());
+        this.log = log;
+        this.session = Objects.requireNonNull(session);
+
+        artifactRepositories = Stream.concat(
+                        session.getCurrentProject().getRemoteArtifactRepositories().stream(),
+                        session.getCurrentProject().getPluginArtifactRepositories().stream())
+                .distinct()
+                .collect(Collectors.toList());
+        remoteRepositories = Stream.concat(
+                        session.getCurrentProject().getRemoteProjectRepositories().stream(),
+                        session.getCurrentProject().getRemotePluginRepositories().stream())
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     /**
@@ -231,92 +221,64 @@ public class ProxyArtifactStore extends BaseArtifactStore {
         return artifactMapper.values().stream().filter(Objects::nonNull).collect(Collectors.toSet());
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    public long getLastModified(Artifact artifact) throws IOException, ArtifactNotFoundException {
-        org.apache.maven.artifact.Artifact mavenArtifact = artifactFactory.createArtifactWithClassifier(
-                artifact.getGroupId(),
-                artifact.getArtifactId(),
-                artifact.getTimestampVersion(),
-                artifact.getType(),
-                artifact.getClassifier());
+    private File resolveArtifactFile(Artifact artifact) throws ArtifactNotFoundException {
         try {
-            artifactResolver.resolve(mavenArtifact, remoteRepositories, localRepository);
-            final File file = mavenArtifact.getFile();
-            if (file != null && file.isFile()) {
-                addResolved(artifact);
-                return file.lastModified();
-            }
-            throw new ArtifactNotFoundException(artifact);
-        } catch (org.apache.maven.artifact.resolver.ArtifactNotFoundException e) {
+            File file = ofNullable(repositorySystem
+                            .resolveArtifact(
+                                    session.getRepositorySession(),
+                                    new ArtifactRequest(
+                                            ResolverUtils.createArtifact(session, artifact),
+                                            remoteRepositories,
+                                            getClass().getSimpleName()))
+                            .getArtifact())
+                    .map(org.eclipse.aether.artifact.Artifact::getFile)
+                    .filter(File::isFile)
+                    .map(f -> {
+                        try {
+                            return f;
+                        } finally {
+                            addResolved(artifact);
+                        }
+                    })
+                    .orElseThrow(() -> new ArtifactNotFoundException(artifact));
+            log.debug("resolveArtifactFile(" + artifact + ") = " + file.getAbsolutePath());
+            return file;
+        } catch (org.eclipse.aether.resolution.ArtifactResolutionException e) {
             throw new ArtifactNotFoundException(artifact, e);
-        } catch (ArtifactResolutionException e) {
-            throw new IOException(e.getMessage(), e);
         }
     }
 
     /**
      * {@inheritDoc}
      */
-    public long getSize(Artifact artifact) throws IOException, ArtifactNotFoundException {
-        org.apache.maven.artifact.Artifact mavenArtifact = artifactFactory.createArtifactWithClassifier(
-                artifact.getGroupId(),
-                artifact.getArtifactId(),
-                artifact.getTimestampVersion(),
-                artifact.getType(),
-                artifact.getClassifier());
-        try {
-            artifactResolver.resolve(mavenArtifact, remoteRepositories, localRepository);
-            final File file = mavenArtifact.getFile();
-            if (file != null && file.isFile()) {
-                addResolved(artifact);
-                return file.length();
-            }
-            throw new ArtifactNotFoundException(artifact);
-        } catch (org.apache.maven.artifact.resolver.ArtifactNotFoundException e) {
-            throw new ArtifactNotFoundException(artifact, e);
-        } catch (ArtifactResolutionException e) {
-            throw new IOException(e.getMessage(), e);
-        }
+    public long getLastModified(Artifact artifact) throws ArtifactNotFoundException {
+        return resolveArtifactFile(artifact).lastModified();
+    }
+    /**
+     * {@inheritDoc}
+     */
+    public long getSize(Artifact artifact) throws ArtifactNotFoundException {
+        return resolveArtifactFile(artifact).length();
     }
 
     /**
      * {@inheritDoc}
      */
     public InputStream get(Artifact artifact) throws IOException, ArtifactNotFoundException {
-        org.apache.maven.artifact.Artifact mavenArtifact = artifactFactory.createArtifactWithClassifier(
-                artifact.getGroupId(),
-                artifact.getArtifactId(),
-                artifact.getTimestampVersion(),
-                artifact.getType(),
-                artifact.getClassifier());
-        try {
-            artifactResolver.resolve(mavenArtifact, remoteRepositories, localRepository);
-            File file = mavenArtifact.getFile();
-            if (file != null && file.isFile()) {
-                addResolved(artifact);
-                return new FileInputStream(file);
-            }
-            throw new ArtifactNotFoundException(artifact);
-        } catch (org.apache.maven.artifact.resolver.ArtifactNotFoundException e) {
-            throw new ArtifactNotFoundException(artifact, e);
-        } catch (ArtifactResolutionException e) {
-            throw new IOException(e.getMessage(), e);
-        }
+        return Files.newInputStream(resolveArtifactFile(artifact).toPath());
     }
 
     /**
      * {@inheritDoc}
      */
-    public void set(Artifact artifact, InputStream content) throws IOException {
+    public void set(Artifact artifact, InputStream content) {
         throw new UnsupportedOperationException();
     }
 
     /**
      * {@inheritDoc}
      */
-    public Metadata getMetadata(String path) throws IOException, MetadataNotFoundException {
+    public Metadata getMetadata(String path) throws MetadataNotFoundException {
         path = StringUtils.strip(path, "/");
         int index = path.lastIndexOf('/');
         int index2 = index == -1 ? -1 : path.lastIndexOf('/', index - 1);
@@ -339,7 +301,8 @@ public class ProxyArtifactStore extends BaseArtifactStore {
             SnapshotArtifactRepositoryMetadata artifactRepositoryMetadata =
                     new SnapshotArtifactRepositoryMetadata(artifact);
             try {
-                repositoryMetadataManager.resolve(artifactRepositoryMetadata, remoteRepositories, localRepository);
+                repositoryMetadataManager.resolve(
+                        artifactRepositoryMetadata, artifactRepositories, session.getLocalRepository());
 
                 Metadata artifactMetadata = artifactRepositoryMetadata.getMetadata();
                 if (artifactMetadata.getVersioning() != null
@@ -379,10 +342,11 @@ public class ProxyArtifactStore extends BaseArtifactStore {
         groupId = index == -1 ? null : path.substring(0, index).replace('/', '.');
         if (!StringUtils.isEmpty(artifactId) && !StringUtils.isEmpty(groupId)) {
             org.apache.maven.artifact.Artifact artifact =
-                    artifactFactory.createDependencyArtifact(groupId, artifactId, anyVersion, "pom", null, "compile");
+                    artifactFactory.createDependencyArtifact(groupId, artifactId, ANY_VERSION, "pom", null, "compile");
             ArtifactRepositoryMetadata artifactRepositoryMetadata = new ArtifactRepositoryMetadata(artifact);
             try {
-                repositoryMetadataManager.resolve(artifactRepositoryMetadata, remoteRepositories, localRepository);
+                repositoryMetadataManager.resolve(
+                        artifactRepositoryMetadata, artifactRepositories, session.getLocalRepository());
 
                 final Metadata artifactMetadata = artifactRepositoryMetadata.getMetadata();
                 if (artifactMetadata.getVersioning() != null) {
@@ -405,7 +369,10 @@ public class ProxyArtifactStore extends BaseArtifactStore {
         groupId = path.replace('/', '.');
         final GroupRepositoryMetadata groupRepositoryMetadata = new GroupRepositoryMetadata(groupId);
         try {
-            repositoryMetadataManager.resolve(groupRepositoryMetadata, remotePluginRepositories, localRepository);
+            repositoryMetadataManager.resolve(
+                    groupRepositoryMetadata,
+                    session.getCurrentProject().getPluginArtifactRepositories(),
+                    session.getLocalRepository());
             foundSomething = true;
             metadata.merge(groupRepositoryMetadata.getMetadata());
             for (Plugin plugin : groupRepositoryMetadata.getMetadata().getPlugins()) {
@@ -425,7 +392,7 @@ public class ProxyArtifactStore extends BaseArtifactStore {
     /**
      * {@inheritDoc}
      */
-    public long getMetadataLastModified(String path) throws IOException, MetadataNotFoundException {
+    public long getMetadataLastModified(String path) throws MetadataNotFoundException {
         Metadata metadata = getMetadata(path);
         if (metadata != null) {
             if (!StringUtils.isEmpty(metadata.getGroupId())
@@ -449,11 +416,11 @@ public class ProxyArtifactStore extends BaseArtifactStore {
         throw new MetadataNotFoundException(path);
     }
 
-    public ArchetypeCatalog getArchetypeCatalog() throws IOException, ArchetypeCatalogNotFoundException {
+    public ArchetypeCatalog getArchetypeCatalog() {
         return archetypeManager.getDefaultLocalCatalog();
     }
 
-    public long getArchetypeCatalogLastModified() throws IOException, ArchetypeCatalogNotFoundException {
+    public long getArchetypeCatalogLastModified() throws ArchetypeCatalogNotFoundException {
         if (archetypeManager.getDefaultLocalCatalog() != null) {
             return System.currentTimeMillis();
         } else {

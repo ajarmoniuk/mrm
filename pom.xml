@@ -93,7 +93,7 @@
 
   <properties>
     <scmpublish.content>${project.build.directory}/staging/mrm</scmpublish.content>
-    <mavenVersion>2.2.1</mavenVersion>
+    <mavenVersion>3.2.5</mavenVersion>
     <mojo.java.target>1.8</mojo.java.target>
     <jetty.version>9.4.50.v20221201</jetty.version>
     <checkstyle.violation.ignore>MagicNumber</checkstyle.violation.ignore>
@@ -102,6 +102,13 @@
 
   <dependencyManagement>
     <dependencies>
+      <!-- maven-compat to be removed -->
+      <dependency>
+        <groupId>org.apache.maven</groupId>
+        <artifactId>maven-compat</artifactId>
+        <version>${mavenVersion}</version>
+      </dependency>
+
       <dependency>
         <groupId>org.apache.maven</groupId>
         <artifactId>maven-plugin-api</artifactId>
@@ -120,7 +127,7 @@
       <dependency>
         <groupId>org.apache.maven</groupId>
         <artifactId>maven-artifact-manager</artifactId>
-        <version>${mavenVersion}</version>
+        <version>2.2.1</version>
       </dependency>
       <dependency>
         <groupId>org.apache.maven</groupId>
@@ -148,9 +155,9 @@
         <version>4.6.1</version>
       </dependency>
       <dependency>
-        <groupId>org.apache.maven</groupId>
-        <artifactId>maven-project</artifactId>
-        <version>${mavenVersion}</version>
+        <groupId>org.apache.maven.resolver</groupId>
+        <artifactId>maven-resolver-api</artifactId>
+        <version>1.4.1</version>
       </dependency>
       <dependency>
         <groupId>org.apache.maven.archetype</groupId>
