@@ -33,7 +33,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.commons.lang.StringUtils;
-import org.apache.maven.RepositoryUtils;
 import org.apache.maven.archetype.ArchetypeManager;
 import org.apache.maven.archetype.catalog.ArchetypeCatalog;
 import org.apache.maven.artifact.factory.ArtifactFactory;
@@ -281,18 +280,14 @@ public class ProxyArtifactStore extends BaseArtifactStore {
         throw new UnsupportedOperationException();
     }
 
-    private Optional<org.eclipse.aether.metadata.Metadata> resolveMetadata(RepositoryMetadata metadata,
-                                                                           RemoteRepository repository) {
+    private Optional<org.eclipse.aether.metadata.Metadata> resolveMetadata(
+            RepositoryMetadata metadata, RemoteRepository repository) {
         ArtifactRepository localRepository = session.getLocalRepository();
-        Optional<Path> localPath = Optional.of(Paths.get(localRepository.getBasedir(),
-                localRepository.pathOfLocalRepositoryMetadata(metadata, localRepository)))
+        Optional<Path> localPath = Optional.of(Paths.get(
+                        localRepository.getBasedir(),
+                        localRepository.pathOfLocalRepositoryMetadata(metadata, localRepository)))
                 .filter(Files::isRegularFile);
         RepositoryPolicy policy = repository.getPolicy(metadata.isSnapshot());
-
-        if (!session.isOffline()
-                && policy.isEnabled()
-                && policy.
-        }
 
         return Optional.empty();
     }
