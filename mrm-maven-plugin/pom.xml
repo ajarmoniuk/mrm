@@ -45,13 +45,6 @@
       <version>${project.version}</version>
     </dependency>
 
-    <!-- maven compat - to be removed -->
-    <dependency>
-      <groupId>org.apache.maven</groupId>
-      <artifactId>maven-compat</artifactId>
-      <scope>provided</scope>
-    </dependency>
-
     <!-- maven core dependencies -->
     <dependency>
       <groupId>org.apache.maven</groupId>
