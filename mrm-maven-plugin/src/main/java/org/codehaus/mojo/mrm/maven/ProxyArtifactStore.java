@@ -20,16 +20,20 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.maven.RepositoryUtils;
 import org.apache.maven.archetype.ArchetypeManager;
 import org.apache.maven.archetype.catalog.ArchetypeCatalog;
 import org.apache.maven.artifact.factory.ArtifactFactory;
@@ -38,6 +42,7 @@ import org.apache.maven.artifact.repository.metadata.ArtifactRepositoryMetadata;
 import org.apache.maven.artifact.repository.metadata.GroupRepositoryMetadata;
 import org.apache.maven.artifact.repository.metadata.Metadata;
 import org.apache.maven.artifact.repository.metadata.Plugin;
+import org.apache.maven.artifact.repository.metadata.RepositoryMetadata;
 import org.apache.maven.artifact.repository.metadata.RepositoryMetadataManager;
 import org.apache.maven.artifact.repository.metadata.RepositoryMetadataResolutionException;
 import org.apache.maven.artifact.repository.metadata.SnapshotArtifactRepositoryMetadata;
@@ -56,6 +61,7 @@ import org.codehaus.mojo.mrm.api.maven.MetadataNotFoundException;
 import org.codehaus.mojo.mrm.plugin.FactoryHelper;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.repository.RepositoryPolicy;
 import org.eclipse.aether.resolution.ArtifactRequest;
 
 import static java.util.Optional.ofNullable;
@@ -273,6 +279,22 @@ public class ProxyArtifactStore extends BaseArtifactStore {
      */
     public void set(Artifact artifact, InputStream content) {
         throw new UnsupportedOperationException();
+    }
+
+    private Optional<org.eclipse.aether.metadata.Metadata> resolveMetadata(RepositoryMetadata metadata,
+                                                                           RemoteRepository repository) {
+        ArtifactRepository localRepository = session.getLocalRepository();
+        Optional<Path> localPath = Optional.of(Paths.get(localRepository.getBasedir(),
+                localRepository.pathOfLocalRepositoryMetadata(metadata, localRepository)))
+                .filter(Files::isRegularFile);
+        RepositoryPolicy policy = repository.getPolicy(metadata.isSnapshot());
+
+        if (!session.isOffline()
+                && policy.isEnabled()
+                && policy.
+        }
+
+        return Optional.empty();
     }
 
     /**
