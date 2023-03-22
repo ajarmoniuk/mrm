@@ -19,53 +19,23 @@ public class ResolverUtils {
      * {@code org.apache.maven.api.services.ArtifactFactory} once it becomes available.</p>
      *
      * @param mavenSession {@link MavenSession} instance, may not be {@code null}
-     * @param groupId groupId of the artifact to create, may not be {@code null}
-     * @param artifactId artifactId of the artifact to create, may not be {@code null}
-     * @param classifier classifier of the artifact to create, may be {@code null}
-     * @param type type of the artifact to create, may be {@code null}
-     * @param version version of the artifact to create, may not be {@code null}
-     * @return new {@link org.eclipse.aether.artifact.Artifact} instance
-     */
-    public static org.eclipse.aether.artifact.Artifact createArtifact(
-            MavenSession mavenSession,
-            String groupId,
-            String artifactId,
-            String classifier,
-            String type,
-            String version) {
-        assert mavenSession != null;
-        assert groupId != null;
-        assert artifactId != null;
-        assert version != null;
-
-        Optional<ArtifactType> artifactType =
-                ofNullable(type).map(mavenSession.getRepositorySession().getArtifactTypeRegistry()::get);
-        return new org.eclipse.aether.artifact.DefaultArtifact(
-                groupId,
-                artifactId,
-                ofNullable(classifier)
-                        .orElse(artifactType.map(ArtifactType::getClassifier).orElse(null)),
-                artifactType.map(ArtifactType::getExtension).orElse(null),
-                version,
-                artifactType.orElse(null));
-    }
-
-    /**
-     * <p>Creates a new {@link org.eclipse.aether.artifact.Artifact} based on an {@link Artifact} object.</p>
-     * <p>Future deprecation: This method will be replaced with the new Maven 4
-     * {@code org.apache.maven.api.services.ArtifactFactory} once it becomes available.</p>
-     *
-     * @param mavenSession {@link MavenSession} instance, may not be {@code null}
      * @param artifact object to read the data from, may not be {@code null}
      * @return new {@link org.eclipse.aether.artifact.Artifact} instance
      */
     public static org.eclipse.aether.artifact.Artifact createArtifact(MavenSession mavenSession, Artifact artifact) {
-        return createArtifact(
-                mavenSession,
-                artifact.getGroupId(),
-                artifact.getArtifactId(),
-                artifact.getClassifier(),
-                artifact.getType(),
-                artifact.getTimestampVersion());
+        String groupId = artifact.getGroupId();
+        String artifactId = artifact.getArtifactId();
+        String version = artifact.getTimestampVersion();
+
+        Optional<ArtifactType> artifactType = ofNullable(artifact.getType())
+                .map(mavenSession.getRepositorySession().getArtifactTypeRegistry()::get);
+        return new org.eclipse.aether.artifact.DefaultArtifact(
+                groupId,
+                artifactId,
+                ofNullable(artifact.getClassifier())
+                        .orElse(artifactType.map(ArtifactType::getClassifier).orElse(null)),
+                artifactType.map(ArtifactType::getExtension).orElse(null),
+                version,
+                artifactType.orElse(null));
     }
 }

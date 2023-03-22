@@ -22,13 +22,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -37,15 +31,7 @@ import org.apache.maven.archetype.ArchetypeManager;
 import org.apache.maven.archetype.catalog.ArchetypeCatalog;
 import org.apache.maven.artifact.factory.ArtifactFactory;
 import org.apache.maven.artifact.repository.ArtifactRepository;
-import org.apache.maven.artifact.repository.metadata.ArtifactRepositoryMetadata;
-import org.apache.maven.artifact.repository.metadata.GroupRepositoryMetadata;
-import org.apache.maven.artifact.repository.metadata.Metadata;
-import org.apache.maven.artifact.repository.metadata.Plugin;
-import org.apache.maven.artifact.repository.metadata.RepositoryMetadata;
-import org.apache.maven.artifact.repository.metadata.RepositoryMetadataManager;
-import org.apache.maven.artifact.repository.metadata.RepositoryMetadataResolutionException;
-import org.apache.maven.artifact.repository.metadata.SnapshotArtifactRepositoryMetadata;
-import org.apache.maven.artifact.repository.metadata.SnapshotVersion;
+import org.apache.maven.artifact.repository.metadata.*;
 import org.apache.maven.artifact.versioning.InvalidVersionSpecificationException;
 import org.apache.maven.artifact.versioning.VersionRange;
 import org.apache.maven.execution.MavenSession;
@@ -169,9 +155,7 @@ public class ProxyArtifactStore extends BaseArtifactStore {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    @Override
     public synchronized Set<String> getGroupIds(String parentGroupId) {
         String path = parentGroupId.replace('.', '/');
         Map<String, Artifact> artifactMapper = this.children.get(path);
@@ -184,9 +168,7 @@ public class ProxyArtifactStore extends BaseArtifactStore {
                 .collect(Collectors.toSet());
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    @Override
     public synchronized Set<String> getArtifactIds(String groupId) {
         String path = groupId.replace('.', '/');
         Map<String, Artifact> artifactMapper = this.children.get(path);
@@ -199,9 +181,7 @@ public class ProxyArtifactStore extends BaseArtifactStore {
                 .collect(Collectors.toSet());
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    @Override
     public synchronized Set<String> getVersions(String groupId, String artifactId) {
         String path = groupId.replace('.', '/') + '/' + artifactId;
         Map<String, Artifact> artifactMapper = this.children.get(path);
@@ -214,9 +194,7 @@ public class ProxyArtifactStore extends BaseArtifactStore {
                 .collect(Collectors.toSet());
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    @Override
     public synchronized Set<Artifact> getArtifacts(String groupId, String artifactId, String version) {
         String path = groupId.replace('.', '/') + '/' + artifactId + "/" + version;
         Map<String, Artifact> artifactMapper = this.children.get(path);
@@ -253,29 +231,22 @@ public class ProxyArtifactStore extends BaseArtifactStore {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    @Override
     public long getLastModified(Artifact artifact) throws ArtifactNotFoundException {
         return resolveArtifactFile(artifact).lastModified();
     }
-    /**
-     * {@inheritDoc}
-     */
+
+    @Override
     public long getSize(Artifact artifact) throws ArtifactNotFoundException {
         return resolveArtifactFile(artifact).length();
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    @Override
     public InputStream get(Artifact artifact) throws IOException, ArtifactNotFoundException {
         return Files.newInputStream(resolveArtifactFile(artifact).toPath());
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    @Override
     public void set(Artifact artifact, InputStream content) {
         throw new UnsupportedOperationException();
     }
@@ -292,9 +263,7 @@ public class ProxyArtifactStore extends BaseArtifactStore {
         return Optional.empty();
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    @Override
     public Metadata getMetadata(String path) throws MetadataNotFoundException {
         path = StringUtils.strip(path, "/");
         int index = path.lastIndexOf('/');
@@ -406,9 +375,7 @@ public class ProxyArtifactStore extends BaseArtifactStore {
         return metadata;
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    @Override
     public long getMetadataLastModified(String path) throws MetadataNotFoundException {
         Metadata metadata = getMetadata(path);
         if (metadata != null) {
@@ -433,10 +400,12 @@ public class ProxyArtifactStore extends BaseArtifactStore {
         throw new MetadataNotFoundException(path);
     }
 
+    @Override
     public ArchetypeCatalog getArchetypeCatalog() {
         return archetypeManager.getDefaultLocalCatalog();
     }
 
+    @Override
     public long getArchetypeCatalogLastModified() throws ArchetypeCatalogNotFoundException {
         if (archetypeManager.getDefaultLocalCatalog() != null) {
             return System.currentTimeMillis();
